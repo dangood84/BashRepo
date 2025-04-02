@@ -1,0 +1,388 @@
+#!/bin/bash
+
+#################################################################
+#       Author: Daniel Good       Date: 07/08/2012              #
+#       Description: This program will emulate the Windows      #
+#                    Recycle Bin/rm Command to safely           #
+#                    move files to a different location and     #
+#		     allow restoration of the file possible     #
+#                    later on.					#
+#                    PLEASE VIEW WITH WINDOW EXPANDED           #                   
+#################################################################
+
+#################################################################
+#DECLARE AND INIT GLOBAL VARIABLES (FLAGS)                                         
+#################################################################
+
+# SET OBJFILE = 1ST CMD LINE PARAMETER/ARGUMENT 
+objFile=$1
+
+#SET DEFAULT CHOICE TO NULL STRING
+choice=""
+
+#INIT ARGCOUNT AND OPTCOUNT
+argCount=0
+optCount=0
+
+# INIT OPT FLAGS
+int_i=0
+int_v=0
+int_r=0
+
+# CREATE RMCFG DELETED FOLDER VALUE
+RMCFG="$HOME/deleted"
+
+#EXPORT RMCFG DELETED FOLDER VALUE AS ENV VAR
+export RMCFG
+
+
+#################################################################
+# DEFINE FUNCTIONS                                                                 
+#################################################################
+
+function DeleteFileObj() {
+
+	# IS FILETYPE A FILE?
+	if [ -f $objFile ]; then
+
+		#  CALL TOUCH TO MODIFY TIMESTAMP
+		touch $objFile
+
+		# MOVE FILE
+		mv $objFile $RMCFG
+
+        # IS FILETYPE A DIR?
+	elif [ -d $objFile ]; then
+
+		# IS FILE A DIR WITH CONTENTS TO DELETE?
+		if [ "$(ls -A $objFile)" ]; then
+
+	        	# CALL TOUCH TO MODIFY TIMESTAMP FOR RESTORE
+        		touch $objFile
+		 
+       		 	# MOVE DIR CONTENTS AND DIR TO DELETED FOLDER
+			  mv $objFile/* $RMCFG
+
+			  mv $objFile $RMCFG
+
+		# IS THE FILE AN EMPTY DIRECTORY?
+		elif ! [ "$(ls -A $objFile)" ]; then
+
+			# CALL TOUCH TO MODIFY FOLDER TIMESTAMP READY FOR RESTORE
+			touch $objFile
+
+			# MOVE DIR TO DELETED FOLDER
+			mv $objFile $RMCFG
+		fi
+	fi
+}
+
+function processErase() {
+
+objFile=$1
+
+# IF FILE DOES NOT EXIST THEN
+if ! [ -e $objFile ]; then
+
+	# "OUTPUT FILE DOES NOT EXIST" AND PIPE STREAM1(STDOUTPUT) TO STD ERROR
+	echo "safe_rm: cannot remove '$objFile': No such file or directory" 1>&2
+
+# ELSE A FILE OF SOME TYPE EXISTS
+else
+
+        #OK FILE EXISTS.  WHAT TYPE OF FILE IS IT?
+
+        # IF FILETYPE File THEN
+        if [ -f $objFile ]; then
+
+                # FILETYPE IS FILE
+
+		#AN EMPTY FILE WITHOUT I OPTION CALLED?
+                if ! [ -s $objFile ]; then
+
+				if [ $int_i = 0 ]; then
+					DeleteFileObj
+					if [ $int_v = 0 ]; then
+						DeleteFileObj
+					elif [ $int_v = 1 ]; then
+						echo "removed '$objFile'"
+						DeleteFileObj
+					fi
+
+
+                		#EMPTY FILE WITH I OPTION CALLED?
+				elif [ $int_i = 1 ]; then
+					read -p "safe_rm: remove regular empty file '$objFile'?" response
+					if [ $response = "y" -o $response = "Y" ]; then
+						DeleteFileObj
+						if [ $int_v = 0 ]; then
+							DeleteFileObj
+						elif [ $int_v = 1 ]; then
+							echo "removed '$objFile'"
+							DeleteFileObj
+						fi
+
+					elif [ $response = "n" ]; then
+
+						# IF MAIN PROGRAM LOOP INDEX = ARGUMENTCOUNT (NUM OF FILENAME ARGS) THEN EXIT PROGRAM
+                                        	if [ i = $argCount ]; then
+                                                	exit
+                                        	fi
+					fi
+				fi
+
+                #OK OUTPUT IS A REGULAR DATA FILE WITHOUT I OPTION CALLED
+		elif [ -s $objFile ]; then
+			
+			if [ $int_i = 0 ]; then
+				DeleteFileObj
+				if [ $int_v = 0 ]; then
+					DeleteFileObj
+				elif [ $int_v = 1 ]; then
+					echo "removed '$objFile'"
+					DeleteFileObj
+				fi
+			
+			#REGULAR DATA FILE WITH I OPTION CALLED
+			elif [ $int_i = 1 ]; then
+				read -p "safe_rm: remove regular file '$objFile'?" response
+				if [ $response = "y" -o $response = "Y" ]; then
+					DeleteFileObj
+					if [ $int_v = 0 ]; then
+                                        	DeleteFileObj
+                                	elif [ $int_v = 1 ]; then
+						echo "removed '$objFile'"
+                                        	DeleteFileObj
+                                	fi
+				elif [ $response = "n" ]; then
+					
+					# IF MAIN PROGRAM LOOP INDEX = ARGUMENTCOUNT (NUM OF FILENAME ARGS) THEN EXIT PROGRAM
+                                        if [ i = $argCount ]; then
+                                                exit
+                                        fi
+				fi
+			fi 
+		fi
+
+        # ELSEIF FILETYPE dir THEN
+        elif [ -d $objFile ]; then
+
+                # FILETYPE IS DIR
+
+		# OK - EMPTY DIRECTORY WITHOUT I OPTION CALLED
+		if ! [ "$(ls -A $objFile)" ]; then
+		
+			if [ $int_i = 0 ]; then
+
+				if [ $int_v = 0 ]; then
+					DeleteFileObj
+				elif [ $int_v = 1 ]; then
+					echo "removed '$objFile'"
+					DeleteFileObj
+				fi
+
+			# OK - EMPTY DIRECTORY WITH I OPTION CALLED
+			elif [ $int_i = 1 ]; then
+
+				# IS DELETE NOT RECURSIVE?
+				if [ $int_r = 0 ]; then
+					read -p "safe_rm: remove regular empty directory '$objFile'?" response
+
+					if [ $response = "y" -o $response = "Y" ]; then
+
+						if [ $int_v = 0 ]; then
+							DeleteFileObj
+						elif [ $int_v = 1 ]; then
+							echo "removed '$objFile'"
+							DeleteFileObj
+						fi
+
+					elif [ $response = "n" ]; then
+
+						# IF MAIN PROGRAM LOOP INDEX = ARGUMENTCOUNT (NUM OF FILENAME ARGS) THEN EXIT PROGRAM
+						if [ i = $argCount ]; then
+							exit
+						fi
+					fi
+
+				# IS DELETE RECURSIVE?
+				elif [ $int_r = 1 ]; then
+                                        read -p "safe_rm: remove directory '$objFile'?" response
+                                        if [ $response = "y" -o $response = "Y" ]; then
+          
+                                                if [ $int_v = 0 ]; then
+                                                        DeleteFileObj
+                                                elif [ $int_v = 1 ]; then
+                                                        echo "removed '$objFile'"
+                                                        DeleteFileObj
+                                                fi
+
+                                        elif [ $response = "n" ]; then
+
+						# IF MAIN PROGRAM LOOP INDEX = ARGUMENTCOUNT (NUM OF FILENAME ARGS) THEN EXIT PROGRAM
+                                                if [ i = $argCount ]; then
+                                                        exit
+                                                fi
+                                        fi					
+				fi
+			fi	
+		
+
+		# FILETYPE IS DIR WITH CONTENTS
+		elif [ "$(ls -A $objFile)" ]; then
+			
+			# OK DIR WITH CONTENTS WITHOUT I OPTION CALLED
+			if [ $int_i = 0 ]; then
+
+				# IS DELETE RECURSIVE?
+				if [ $int_r = 1 ]; then
+                                  
+                                                cd $objFile
+
+                                                if [ $int_v = 0 ]; then
+                                                        sh ~/safe_rm -r $( ls )
+                                                elif [ $int_v = 1 ]; then
+                                                        sh ~/safe_rm -v -r $( ls )
+                                                fi
+
+                                                cd ..
+
+                                                if ! [ "$(ls -A $objFile)" ]; then
+                                                                if [ $int_v = 0 ]; then
+                                                                        DeleteFileObj
+                                                                elif [ $int_v = 1 ]; then
+                                                                        echo "removed '$objFile'"
+                                                                        DeleteFileObj
+                                                                fi
+                                                        
+                                                fi
+
+
+                                # IS DELETE NOT RECURSIVE?
+				elif [ $int_r = 0 ]; then	
+					if [ $int_v = 0 ]; then
+						DeleteFileObj
+					elif [ $int_v = 1 ]; then
+						echo "removed '$objFile'"
+						DeleteFileObj
+					fi
+				fi
+
+			# OK DIR WITH CONTENTS WITH OPTION I CALLED
+			elif [ $int_i = 1 ]; then
+				if [ $int_r = 0 ]; then
+
+					# IS DELETE NOT RECURSIVE?
+					read -p "safe_rm: remove regular directory '$objFile' and all it's contents?" response
+					if [ $response = 'y' -o $response = "Y" ]; then
+						if [ $int_v = 0 ]; then
+							DeleteFileObj
+						elif [ $int_v = 1 ]; then
+							echo "removed '$objFile'"
+							DeleteFileObj
+						fi
+					elif [ $response = 'n' ]; then
+
+						# IF MAIN PROGRAM LOOP INDEX = ARGUMENTCOUNT (NUM OF FILENAME ARGS) THEN EXIT PROGRAM
+                                        	if [ i = $argCount ]; then
+                                                	exit
+                                        	fi
+					fi
+
+				# IS DELETE RECURSIVE?
+				elif [ $int_r = 1 ]; then
+					read -p "safe_rm: descend into directory '$objFile'?" response
+					if [ $response = "y" -o $response = "Y" ]; then
+						cd $objFile
+                                            	if [ $int_v = 0 ]; then
+							sh ~/safe_rm -i -r $( ls )
+						elif [ $int_v = 1 ]; then
+							sh ~/safe_rm -i -v -r $( ls )
+						fi
+
+						cd ..
+
+						if ! [ "$(ls -A $objFile)" ]; then
+							read -p "safe_rm: remove directory '$objFile'?" response
+							if [ $response = "y" -o $response = "Y" ]; then
+								if [ $int_v = 0 ]; then
+									DeleteFileObj
+								elif [ $int_v = 1 ]; then
+									echo "removed '$objFile'"
+									DeleteFileObj
+								fi
+							fi
+						fi
+
+					elif [ $response = 'n' ]; then
+
+						# IF MAIN PROGRAM LOOP INDEX = ARGUMENTCOUNT (NUM OF FILENAME ARGS) THEN EXIT PROGRAM
+						if [ i = $argCount ]; then
+							exit
+						fi
+					fi
+				fi
+			fi
+			
+		fi
+        fi
+fi
+}
+
+##################################################################
+# MAIN PROGRAM                                                   
+##################################################################
+
+
+# IF DELETED FOLDER DOESN'T EXIST CREATE IT
+
+
+if ! [ -d $RMCFG ]; then
+        mkdir $RMCFG
+fi
+
+
+# GET OPTIONS FROM USER
+
+while getopts "iIvVrR" choice
+do
+
+	case $choice in
+
+		[Ii])
+		int_i=1;
+		;;
+
+		[Vv])
+		int_v=1;
+		;;
+
+		[Rr])
+		int_r=1;
+		;;
+
+		*)
+		echo "Invalid option." >/dev/null  2>/dev/null
+		exit
+		;;
+
+	esac
+
+done
+
+# CALCULATE NUMBER OF OPTIONS AND ARGUMENTS
+optCount=$[ $OPTIND -1 ]
+argCount=$[ $# - $optCount ]
+
+# $1 IS NOW 1ST CMD IN ARG
+shift $optCount
+   
+# BEGIN MAIN PROGRAM LOOP TO LOOP THROUGH FILENAME ARGUMENTS
+for((i=0;i<$argCount;i++)); do
+	processErase $1
+	shift 1
+	objFile=$1
+done
+
+# UNSET RMCFG ENV VAR
+unset RMCFG
