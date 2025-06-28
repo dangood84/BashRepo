@@ -1,0 +1,133 @@
+#!/usr/bin/env bash
+
+TRASH_DIR="$HOME/.trash"
+BACKUP_DIR="$HOME/dotfiles_backup"
+
+mkdir -p "$TRASH_DIR" "$BACKUP_DIR"
+
+interactive=false
+verbose=false
+restore=false
+files=()
+
+timestamp() {
+  date "+%Y%m%d-%H%M%S"
+}
+
+log() {
+  $verbose && echo "$@"
+}
+
+confirm() {
+  $interactive || return 0
+  printf "%s [y/n]: " "$1"
+  while true; do
+    if [[ $ZSH_VERSION ]]; then
+      read -k 1 response
+      echo
+    else
+      read -n 1 response
+      echo
+    fi
+    case $response in
+      [Yy]) return 0 ;;
+      [Nn]) return 1 ;;
+      *) printf "Please answer y or n: " ;;
+    esac
+  done
+}
+
+safe_rm() {
+  for item in "${files[@]}"; do
+    if [ ! -e "$item" ]; then
+      echo "⚠️  '$item' does not exist. Skipping."
+      continue
+    fi
+
+    base=$(basename "$item")
+    time=$(timestamp)
+    trash_target="$TRASH_DIR/${base}_$time"
+    backup_target="$BACKUP_DIR/${base}_$time"
+
+    log "📦 Backing up '$item' to $backup_target"
+    cp -a "$item" "$backup_target"
+
+    log "🗑  Moving '$item' to trash ($trash_target)"
+    mv "$item" "$trash_target"
+
+    echo "✅ Removed: '$item'"
+  done
+}
+
+restore_menu() {
+  echo "♻️  Restore from:"
+  PS3="Choose source: "
+  select opt in "Trash" "Backup" "Cancel"; do
+    case $opt in
+      Trash) restore_from "$TRASH_DIR"; break ;;
+      Backup) restore_from "$BACKUP_DIR"; break ;;
+      Cancel) echo "❌ Cancelled."; break ;;
+      *) echo "Invalid option."; ;;
+    esac
+  done
+}
+
+restore_from() {
+  local src_dir="$1"
+  local files=("$src_dir"/*)
+  if [ ${#files[@]} -eq 0 ]; then
+    echo "📁 Nothing to restore in $src_dir"
+    return
+  fi
+
+  echo "📄 Select a file or folder to restore:"
+  select file in "${files[@]}" "Cancel"; do
+    if [[ $file == "Cancel" ]]; then
+      echo "❌ Cancelled."
+      return
+    elif [ -e "$file" ]; then
+      restore_name=$(basename "$file" | sed 's/_.*//')
+      dest="$HOME/$restore_name"
+      echo "♻️  Restoring to: $dest"
+      cp -a "$file" "$dest"
+      echo "✅ Restored."
+      return
+    else
+      echo "❌ Invalid selection."
+    fi
+  done
+}
+
+parse_args() {
+  while [[ "$1" ]]; do
+    case "$1" in
+      -i) interactive=true ;;
+      -v) verbose=true ;;
+      --restore) restore=true ;;
+      --help)
+        echo "Usage: $0 [-i] [-v] [--restore] [files...]"
+        exit 0
+        ;;
+      --) shift; break ;;
+      -*) echo "❌ Unknown option: $1"; exit 1 ;;
+      *) files+=("$1") ;;
+    esac
+    shift
+  done
+}
+
+# === MAIN ===
+
+parse_args "$@"
+
+if $restore; then
+  restore_menu
+elif [ ${#files[@]} -eq 0 ]; then
+  echo "❌ No files provided."
+  echo "Usage: $0 [-i] [-v] [--restore] [files...]"
+  exit 1
+else
+  echo "⚠️  About to safely remove:"
+  for f in "${files[@]}"; do echo "  - $f"; done
+  confirm "Proceed?" && safe_rm
+fi
