@@ -1,0 +1,111 @@
+#!/bin/bash
+
+#########################################################################
+# Author: Daniel Good           Date: 07/08/2012                        #
+# Description: Emulates the Windows Recycle Bin using mv to move       #
+#              files/directories to a safe deleted folder with support #
+#              for -i (interactive), -v (verbose), and -r (recursive). #
+#########################################################################
+
+# Deleted folder path
+RMCFG="$HOME/deleted"
+export RMCFG
+
+# Ensure deleted folder exists
+mkdir -p "$RMCFG"
+
+# Option flags
+int_i=0  # interactive
+int_v=0  # verbose
+int_r=0  # recursive
+
+# Parse options
+while getopts ":ivr" opt; do
+  case $opt in
+    i|I) int_i=1 ;;
+    v|V) int_v=1 ;;
+    r|R) int_r=1 ;;
+    *) echo "Invalid option: -$OPTARG" >&2; exit 1 ;;
+  esac
+done
+shift $((OPTIND -1))
+
+# Function to move file/dir to deleted folder
+DeleteFileObj() {
+  local path="$1"
+  touch "$path"
+  mv "$path" "$RMCFG"
+  if [ "$int_v" -eq 1 ]; then
+    echo "removed '$path'"
+  fi
+}
+
+# Function to confirm deletion
+confirm() {
+  local prompt="$1"
+  read -p "$prompt [y/N] " response
+  [[ "$response" == [yY] ]]
+}
+
+# Process each file or directory
+for objFile in "$@"; do
+
+  if [ ! -e "$objFile" ]; then
+    echo "safe_rm: cannot remove '$objFile': No such file or directory" >&2
+    continue
+  fi
+
+  if [ -f "$objFile" ]; then
+    # Regular file
+    if [ "$int_i" -eq 1 ]; then
+      if [ ! -s "$objFile" ]; then
+        confirm "safe_rm: remove empty file '$objFile'?" || continue
+      else
+        confirm "safe_rm: remove file '$objFile'?" || continue
+      fi
+    fi
+    DeleteFileObj "$objFile"
+
+  elif [ -d "$objFile" ]; then
+    # Directory
+    if [ -z "$(ls -A "$objFile")" ]; then
+      # Empty directory
+      if [ "$int_i" -eq 1 ]; then
+        confirm "safe_rm: remove empty directory '$objFile'?" || continue
+      fi
+      DeleteFileObj "$objFile"
+    else
+      # Directory with contents
+      if [ "$int_r" -eq 0 ]; then
+        echo "safe_rm: cannot remove '$objFile': Is a directory" >&2
+        continue
+      fi
+
+      if [ "$int_i" -eq 1 ]; then
+        confirm "safe_rm: descend into directory '$objFile'?" || continue
+      fi
+
+      # Recursively process contents
+      find "$objFile" -depth | while read -r path; do
+        if [ -f "$path" ] || [ -d "$path" ]; then
+          if [ "$int_i" -eq 1 ]; then
+            confirm "safe_rm: remove '$path'?" || continue
+          fi
+          DeleteFileObj "$path"
+        fi
+      done
+
+      # Delete parent dir after contents removed
+      if [ -d "$objFile" ]; then
+        if [ "$int_i" -eq 1 ]; then
+          confirm "safe_rm: remove directory '$objFile'?" || continue
+        fi
+        DeleteFileObj "$objFile"
+      fi
+    fi
+
+  else
+    echo "safe_rm: '$objFile' is not a regular file or directory" >&2
+  fi
+
+done
